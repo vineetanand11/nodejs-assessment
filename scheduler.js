@@ -1,5 +1,9 @@
+require('dotenv').config();
 const cron = require('node-cron');
 const { ScheduledMessage } = require('./models');
+
+const TIMEZONE = process.env.TZ || "Asia/Kolkata";
+
 /**
  * convert day+time -> cron expression
  * day: can be "monday" or "mon" or comma separated "mon,wed"
@@ -55,7 +59,7 @@ async function scheduleExistingTasks(executor) {
         const t = scheduledTasks.get(String(job._id));
         if (t) t.stop();
       }, {
-        timezone: "Asia/Kolkata"
+        timezone: TIMEZONE
       });
 
 
