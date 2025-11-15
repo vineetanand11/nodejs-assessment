@@ -114,35 +114,37 @@ app.get('/policy/search', async (req, res) => {
  * aggregated policy by each user (count, sum premium)
  */
 app.get('/policies/aggregate', async (req, res) => {
-    const agg = await Policy.aggregate([
-        {
-            $group: {
-                '_id': '$user',
-                policyCount: { $sum: 1 },
-                totalPremium: { $sum : { $ifNull : ['$premium_amount', 0] }}
-            }
-        },
+    try {
+        const result = await Policy.aggregate([
         {
             $lookup: {
-                from: 'users',
-                localField: '_id',
-                foreignField: '_id',
-                as: 'user'
+            from: "users",
+            localField: "user",
+            foreignField: "_id",
+            as: "user_details"
             }
         },
+        { $unwind: "$user_details" },
+
         {
-            $unwind : { path: '$user', preserveNullAndEmptyArrays: true }
-        },
-        {
-            $project : {
-                user: {firstname: '$user.firstname', email: '$user.email', '_id': '$user._id'},
-                policyCount: 1,
-                totalPremium: 1
+            $group: {
+            _id: "$user_details._id",
+            user: { $first: "$user_details.firstname" },
+            email: { $first: "$user_details.email" },
+            totalPolicies: { $sum: 1 },
+            totalPremium: { $sum: "$premium_amount" }
             }
         }
-    ]);
-    res.json($agg);
+        ]);
+
+        res.json(result);
+
+    } catch (err) {
+        console.error("Aggregate ERROR:", err);
+        res.status(500).json({ error: err.message });
+    }
 });
+
 
 /**
  * POST /schedule
@@ -180,8 +182,12 @@ app.get('/schedules', async (req, res) => {
 /**
  * (Optional) endpoint to fetch policies by policy number
  */
-app.get('/policies/:policy_number', async (req, res) => {
-    const policy = await Policy.findOne({ policy_number:req.body.policy_number })
+app.get('/policies/:policyNumber', async (req, res) => {
+    const { policyNumber } = req.params;
+    if (!policyNumber) {
+        return res.status(400).json({ error: "policy number missing" });
+    }
+    const policy = await Policy.findOne({ policy_number:policyNumber })
         .populate('agent account lob carrier user')
         .lean();
     if (!policy) return res.status(404).json({ error: 'policy not found' });
