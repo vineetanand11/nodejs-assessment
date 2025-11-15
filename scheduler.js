@@ -12,31 +12,18 @@ function buildCron(day, time) {
     throw new Error("day and time are required");
   }
 
-  // time format: HH:mm
-  const [hour, minute] = time.split(':');
-  if (!hour || !minute) {
-    throw new Error("Invalid time format. Expected HH:mm");
+  // Time: HH:mm
+  const [hour, minute] = time.split(":");
+  // Day: YYYY-MM-DD
+  const [year, month, date] = day.split("-");
+
+  if (!hour || !minute || !year || !month || !date) {
+    throw new Error("Invalid day or time format");
   }
 
-  // day format: YYYY-MM-DD
-  const [year, month, date] = day.split('-');
-  if (!year || !month || !date) {
-    throw new Error("Invalid day format. Expected YYYY-MM-DD");
-  }
-
-  // node-cron format:
-  // second minute hour day month weekday
-  //
-  // We use:
-  // second = 0
-  // minute = minute
-  // hour = hour
-  // day = date
-  // month = month
-  // weekday = *
-  //
-  // Example: "0 30 14 20 2 *"
-  return `0 ${minute} ${hour} ${date} ${month} *`;
+  // Cron format: second minute hour day month weekday
+  // We run cron in Asia/Kolkata timezone, so NO UTC CONVERSION.
+  return `0 ${minute} ${hour} ${parseInt(date)} ${parseInt(month)} *`;
 }
 
 
@@ -47,10 +34,11 @@ async function scheduleExistingTasks(executor) {
 
   const pending = await ScheduledMessage.find({ executed: false }).lean();
   console.log("Found pending jobs:", pending.length);
-
+ 
   for (const job of pending) {
     try {
       console.log("Scheduling Job:", job._id, job.cronExpr || `${job.day} ${job.time}`);
+     
 
       let cronExpr = job.cronExpr;
       if (!cronExpr) {
@@ -59,14 +47,17 @@ async function scheduleExistingTasks(executor) {
         await ScheduledMessage.updateOne({ _id: job._id }, { $set: { cronExpr } });
       }
 
-      const task = cron.schedule(cronExpr, async () => {
+     const task = cron.schedule(cronExpr, async () => {
         console.log("JOB EXECUTED:", job._id);
         await executor(job);
         await ScheduledMessage.updateOne({ _id: job._id }, { $set: { executed: true } });
 
         const t = scheduledTasks.get(String(job._id));
         if (t) t.stop();
+      }, {
+        timezone: "Asia/Kolkata"
       });
+
 
       scheduledTasks.set(String(job._id), task);
 
